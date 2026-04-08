@@ -109,6 +109,24 @@ CREATE TABLE SystemUser (
     created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (person_id) REFERENCES Person(person_id)
 );
+ALTER TABLE Assignment 
+ADD CONSTRAINT unique_assignment UNIQUE(farmer_id, worker_id);
+
+ALTER TABLE Production 
+ADD CONSTRAINT unique_production UNIQUE(farm_id, season, year);
+
+ALTER TABLE FarmerInput 
+ADD CONSTRAINT unique_farmer_input UNIQUE(farmer_id, input_id, date_given);
+
+ALTER TABLE Input 
+MODIFY store_id INT NOT NULL;
+
+ALTER TABLE FarmerInput 
+MODIFY given_by INT NOT NULL;
+
+
+
+
 --MILESTONE 4: Security & Automation 
 --Views
 
@@ -181,7 +199,94 @@ BEGIN
     VALUES (NEW.farm_id, NOW(), NEW.quantity_kg);
 END;
 
+CREATE TRIGGER trg_PreventMultipleAssignments
+BEFORE INSERT ON Assignment
+FOR EACH ROW
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM Assignment 
+        WHERE farmer_id = NEW.farmer_id AND is_active = TRUE
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Farmer already has an active extension worker';
+    END IF;
+END;
+
+-- BACKUP AND RECOVERY STRATEGY
+
+-- Backup command
+-- mysqldump -u root -p agri_db > agri_backup.sql
+
+-- Restore command
+-- mysql -u root -p agri_db < agri_backup.sql
+
+--------TESTING THE SYSTEM
+
+----Insert Persons
+INSERT INTO Person(full_name, phone, gender, dob, national_id)
+VALUES 
+('John Doe', '0700000001', 'Male', '1990-01-01', 'NIN001'),
+('Mary Naki', '0700000002', 'Female', '1995-05-10', 'NIN002');
+
+------Make them Farmer & Extension Worker
+
+-- John → Farmer
+INSERT INTO Farmer(farmer_id, education_level)
+VALUES (1, 'Primary');
+
+-- Mary → Extension Worker
+INSERT INTO ExtensionWorker(worker_id, employee_no, qualification, district, hire_date)
+VALUES (2, 'EMP001', 'Agriculture Diploma', 'Mukono', '2022-01-01');
+----add farm 
+INSERT INTO Farm(farmer_id, village, sub_county, district, size_acres)
+VALUES (1, 'Katosi', 'Mukono TC', 'Mukono', 2.5);
+----add production
+INSERT INTO Production(farm_id, season, year, quantity_kg, quality_grade)
+VALUES (1, 'Season A', 2025, 500, 'A');
+
+-----Add Store + Input
+INSERT INTO MinistryStore(store_name, district, stock_qty)
+VALUES ('Mukono Store', 'Mukono', 1000);
+
+INSERT INTO Input(input_name, input_type, unit, store_id)
+VALUES ('Coffee Seedlings', 'Seedlings', 'Pieces', 1);
+-----assign extension worker to farmer
+INSERT INTO Assignment(farmer_id, worker_id)
+VALUES (1, 2);
+----Give Inputs to Farmer
+INSERT INTO FarmerInput(farmer_id, input_id, quantity, date_given, given_by)
+VALUES (1, 1, 100, '2026-04-01', 2);
+----advisory visit
+INSERT INTO AdvisoryVisit(farmer_id, worker_id, visit_date, recommendations)
+VALUES (1, 2, '2026-04-05', 'Use better irrigation methods');
+
+---STEP 2: Test Your Views
+----Farmer Production Report
+SELECT * FROM vw_FarmerProduction;
+----Assigned Farmers
+SELECT * FROM vw_MyFarmers;
 
 
+----Test Stored Procedure
+CALL sp_RegisterFarmer(
+    'Peter Kato',
+    '0700000003',
+    'Male',
+    '1992-02-02',
+    'NIN003',
+    'Secondary'
+);
+----Test Production Trigger
+INSERT INTO Production(farm_id, season, year, quantity_kg, quality_grade)
+VALUES (1, 'Season B', 2025, 300, 'B');
+-----check
 
+SELECT * FROM ProductionLog;
+
+-----Test Assignment Restriction
+INSERT INTO Assignment(farmer_id, worker_id)
+VALUES (1, 2); -- This should fail due to the trigger preventing multiple active assignments
+---Test Security
+SELECT * FROM vw_MyFarmers; -- Should show assigned farmers for ext_worker
+SELECT * FROM vw_FarmerProduction; -- Should show production summary for ministry_viewer
 
