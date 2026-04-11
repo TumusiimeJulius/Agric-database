@@ -225,7 +225,7 @@ END;
 ----Insert Persons
 INSERT INTO Person(full_name, phone, gender, dob, national_id)
 VALUES 
-('John Doe', '0700000001', 'Male', '1990-01-01', 'NIN001'),
+('Tumusiime Julius', '0700000001', 'Male', '1990-01-01', 'NIN001'),
 ('Mary Naki', '0700000002', 'Female', '1995-05-10', 'NIN002');
 
 ------Make them Farmer & Extension Worker
